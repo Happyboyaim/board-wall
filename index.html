@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Board Wall">
+<meta name="theme-color" content="#0e0d0c">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Board Wall</title>
+<style>
+/* Layout: full-bleed columns of pins drifting slowly upward; no chrome until you tap. One deliberate dark look. */
+:root {
+  --ground: #0e0d0c;
+  --tile: #1c1a18;
+  --ink: #ece6de;
+  --ink-soft: #a39b91;
+  --glass: rgba(24, 22, 20, 0.82);
+  --line: rgba(236, 230, 222, 0.14);
+  --accent: #e6c79c;
+  --warn: #f0a08a;
+  --gap: 12px;
+  --radius: 16px;
+  --font-ui: -apple-system, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; margin: 0; background: var(--ground); color: var(--ink); overflow: hidden; }
+body { font-family: var(--font-ui); -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+
+#wall {
+  position: fixed; inset: 0;
+  display: flex; gap: var(--gap);
+  padding-left: max(var(--gap), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--gap), env(safe-area-inset-right, 0px));
+}
+.col { flex: 1 1 0; min-width: 0; position: relative; }
+.track { position: absolute; left: 0; right: 0; top: 0; display: flex; flex-direction: column; gap: var(--gap); will-change: transform; }
+.tile { width: 100%; border-radius: var(--radius); overflow: hidden; background: var(--tile); flex: none; }
+.tile img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 1.4s ease; }
+.tile.in img { opacity: 1; }
+
+/* Soft fade at top and bottom edges so pins don't hard-clip */
+#wall::before, #wall::after { content: ""; position: absolute; left: 0; right: 0; height: 64px; z-index: 2; pointer-events: none; }
+#wall::before { top: 0; background: linear-gradient(var(--ground), transparent); }
+#wall::after { bottom: 0; background: linear-gradient(transparent, var(--ground)); }
+
+/* Status bar that appears on tap */
+#hud {
+  position: fixed; z-index: 5; left: 50%; transform: translate(-50%, 12px);
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center;
+  max-width: calc(100vw - 32px); box-sizing: border-box;
+  padding: 8px 8px 8px 16px; border-radius: 999px;
+  background: var(--glass); border: 1px solid var(--line);
+  -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  opacity: 0; pointer-events: none; transition: opacity .35s ease, transform .35s ease;
+}
+#hud.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+#status { font-size: 14px; color: var(--ink-soft); min-width: 0; }
+#status b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+#status .warn { color: var(--warn); }
+
+button {
+  font: 600 14px/1 var(--font-ui); color: var(--ink); background: rgba(236,230,222,0.1);
+  border: 1px solid var(--line); border-radius: 999px; padding: 10px 16px; cursor: pointer;
+}
+button.primary { background: var(--accent); color: #1d1710; border-color: transparent; }
+button:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Boards screen */
+#settings {
+  position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: rgba(8, 7, 6, 0.6);
+}
+.sheet {
+  width: min(560px, 100%); box-sizing: border-box; padding: 24px; border-radius: 22px;
+  background: var(--glass); border: 1px solid var(--line);
+  -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  display: grid; gap: 16px; -webkit-user-select: text; user-select: text;
+}
+.sheet h2 { margin: 0; font-size: 22px; letter-spacing: -0.01em; text-wrap: balance; }
+.sheet p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink-soft); }
+.sheet label { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+.field { display: grid; gap: 8px; }
+textarea, select {
+  font: 15px/1.5 var(--font-ui); color: var(--ink); background: rgba(0,0,0,0.35);
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px; box-sizing: border-box; width: 100%;
+}
+textarea { min-height: 132px; resize: vertical; }
+#board-errors { color: var(--warn); font-size: 14px; line-height: 1.5; margin: 0; }
+.row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+
+@media (prefers-reduced-motion: reduce) { .tile img { transition: none; } #hud { transition: none; } }
+</style>
+</head>
+<body>
+<div id="wall" aria-hidden="true"></div>
+
+<div id="hud" role="status">
+  <span id="status">Loading pins…</span>
+  <button id="pause-btn" type="button">Pause</button>
+  <button id="boards-btn" type="button" class="primary">Boards</button>
+</div>
+
+<div id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+  <form class="sheet" id="settings-form">
+    <h2 id="settings-title">Boards on the wall</h2>
+    <p>Paste one Pinterest board link per line, like pinterest.com/dankong2004/2027. A profile link shows that profile's newest pins. Boards must be public.</p>
+    <div class="field">
+      <label for="boards-input">Board links</label>
+      <textarea id="boards-input" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+    </div>
+    <p id="board-errors" hidden></p>
+    <div class="field">
+      <label for="speed-input">Drift speed</label>
+      <select id="speed-input">
+        <option value="slow">Slow</option>
+        <option value="medium">Medium</option>
+        <option value="fast">Fast</option>
+      </select>
+    </div>
+    <div class="row">
+      <button type="button" id="cancel-btn">Cancel</button>
+      <button type="submit" class="primary" id="save-btn">Save and reload</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---- Settings -----------------------------------------------------------
+  const DEFAULT_BOARDS = ["https://www.pinterest.com/dankong2004/2027/"];
+  const STORE_KEY = "boardwall.settings.v1";
+  const CACHE_KEY = "boardwall.pins.v1";
+  const SPEEDS = { slow: 7, medium: 13, fast: 22 };      // pixels per second
+  const REFRESH_MS = 6 * 60 * 60 * 1000;                 // re-read boards every 6 hours
+  const GAP = 12;
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function readStore(key) { try { return JSON.parse(localStorage.getItem(key) || "null"); } catch (e) { return null; } }
+  function writeStore(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+
+  function loadSettings() {
+    const s = readStore(STORE_KEY) || {};
+    let q; try { q = new URLSearchParams(location.search); } catch (e) { q = new URLSearchParams(); }
+    if (q.get("boards")) s.boards = q.get("boards").split(",");
+    if (q.get("speed")) s.speed = q.get("speed");
+    return {
+      boards: Array.isArray(s.boards) && s.boards.length ? s.boards : DEFAULT_BOARDS.slice(),
+      speed: SPEEDS[s.speed] ? s.speed : "medium"
+    };
+  }
+  let settings = loadSettings();
+
+  // Accepts "https://www.pinterest.com/user/board/", "pinterest.com/user/board", "user/board" or a profile link.
+  const RESERVED = new Set(["pin", "search", "ideas", "today", "settings", "business", "_", "explore"]);
+  function parseBoard(raw) {
+    let s = String(raw || "").trim();
+    if (!s) return null;
+    if (/pin\.it\//i.test(s)) return { error: "Short pin.it links can't be read. In Pinterest, open the board and copy the full pinterest.com link." };
+    s = s.replace(/[?#].*$/, "").replace(/^https?:\/\//i, "").replace(/^([a-z]{2,3}\.)?(www\.)?pinterest\.[a-z.]+\//i, "");
+    const parts = s.split("/").filter(Boolean);
+    if (!parts.length || RESERVED.has(parts[0].toLowerCase())) return { error: "That doesn't look like a board link." };
+    const user = decodeURIComponent(parts[0]);
+    const board = parts[1] ? decodeURIComponent(parts[1]) : null;
+    if (parts[2]) return { error: "Board sections aren't supported. Use the board link itself." };
+    return { user, board, label: board ? user + "/" + board : user };
+  }
+
+  // ---- Reading pins from Pinterest's public board widget feed ------------
+  function feedUrl(b) {
+    const u = encodeURIComponent(b.user);
+    return b.board
+      ? "https://widgets.pinterest.com/v3/pidgets/boards/" + u + "/" + encodeURIComponent(b.board) + "/pins/"
+      : "https://widgets.pinterest.com/v3/pidgets/users/" + u + "/pins/";
+  }
+  let cbSeq = 0;
+  function jsonp(url, ms) {
+    return new Promise((resolve, reject) => {
+      const name = "__boardwall" + (++cbSeq) + Date.now();
+      const s = document.createElement("script");
+      const timer = setTimeout(() => { done(); reject(new Error("timeout")); }, ms);
+      function done() { clearTimeout(timer); try { delete window[name]; } catch (e) { window[name] = undefined; } s.remove(); }
+      window[name] = (data) => { done(); resolve(data); };
+      s.onerror = () => { done(); reject(new Error("load")); };
+      s.src = url + "?callback=" + name;
+      document.head.appendChild(s);
+    });
+  }
+  function normalize(data) {
+    const pins = (data && data.data && Array.isArray(data.data.pins)) ? data.data.pins : [];
+    return pins.map((p) => {
+      const im = p.images || {};
+      const best = im["564x"] || im["474x"] || im["237x"] || im["236x"] || Object.values(im)[0];
+      if (!best || !best.url) return null;
+      return { id: String(p.id), src: best.url, w: best.width || 236, h: best.height || 314, color: p.dominant_color || null };
+    }).filter(Boolean);
+  }
+  async function boardPins(b) {
+    try { const d = await jsonp(feedUrl(b), 12000); const n = normalize(d); if (n.length) return n; } catch (e) {}
+    const r = await fetch(feedUrl(b), { credentials: "omit" });   // second try, in case the feed allows direct reads
+    return normalize(await r.json());
+  }
+
+  async function loadPins() {
+    const boards = settings.boards.map(parseBoard).filter((b) => b && !b.error);
+    const results = await Promise.allSettled(boards.map(boardPins));
+    const seen = new Set(); const pins = []; const failed = []; let ok = 0;
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled" && r.value.length) {
+        ok++;
+        r.value.forEach((p) => { if (!seen.has(p.id)) { seen.add(p.id); pins.push(p); } });
+      } else failed.push(boards[i].label);
+    });
+    if (pins.length) {
+      writeStore(CACHE_KEY, { at: Date.now(), boards: settings.boards, pins });
+      return { pins, source: "live", ok, failed };
+    }
+    try {
+      const r = await fetch("pins.json", { cache: "no-store" });
+      if (r.ok) { const j = await r.json(); if (Array.isArray(j.pins) && j.pins.length) return { pins: j.pins, source: "file", ok: 0, failed }; }
+    } catch (e) {}
+    const cached = readStore(CACHE_KEY);
+    if (cached && Array.isArray(cached.pins) && cached.pins.length && String(cached.boards) === String(settings.boards)) {
+      return { pins: cached.pins, source: "cached", at: cached.at, ok: 0, failed };
+    }
+    return { pins: samplePins(), source: "sample", ok: 0, failed };
+  }
+
+  // ---- Sample pins, drawn locally, shown only when no board can be read ----
+  function samplePins() {
+    const palette = [
+      ["#2f3b33", "#c9b27c"], ["#5b3a2e", "#efd9bd"], ["#1f2a3a", "#8fb3d1"], ["#c7b8a3", "#3a2f26"],
+      ["#3d2c3f", "#e0a7a0"], ["#24302c", "#a9c4a0"], ["#e8e0d2", "#7a5b3d"], ["#41352b", "#f0c27b"],
+      ["#162024", "#d9e3e0"], ["#6d4b3b", "#f3e6d3"], ["#2a2a33", "#c9a0d0"], ["#d6c7b0", "#2e3a40"]
+    ];
+    const ratios = [1.33, 1.5, 1.0, 1.25, 1.78, 0.8, 1.4, 1.2, 1.6];
+    const words = ["run", "read", "build", "travel", "play", "learn", "2027", "make", "rest"];
+    const out = [];
+    for (let i = 0; i < 18; i++) {
+      const w = 360, h = Math.round(w * ratios[i % ratios.length]);
+      const [bg, fg] = palette[i % palette.length];
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      const g = c.getContext("2d");
+      const grad = g.createLinearGradient(0, 0, 0, h); grad.addColorStop(0, bg); grad.addColorStop(1, shade(bg, -18));
+      g.fillStyle = grad; g.fillRect(0, 0, w, h);
+      g.fillStyle = fg; g.strokeStyle = fg;
+      const m = i % 5;
+      if (m === 0) { g.beginPath(); g.arc(w * 0.5, h * 0.42, w * 0.24, 0, Math.PI * 2); g.fill(); g.globalAlpha = .5; for (let y = h * 0.68; y < h; y += 14) g.fillRect(0, y, w, 4); }
+      else if (m === 1) { g.lineWidth = 10; for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(w / 2, h, w * (0.2 + k * 0.13), Math.PI, 0); g.stroke(); } }
+      else if (m === 2) { g.globalAlpha = .8; for (let x = 24; x < w; x += 34) for (let y = 24; y < h; y += 34) { g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill(); } }
+      else if (m === 3) { g.globalAlpha = .85; for (let k = 0; k < 7; k++) g.fillRect(0, (h / 7) * k, w * (0.3 + ((k * 37) % 60) / 100), h / 14); }
+      else { g.font = "600 " + Math.round(w * 0.26) + "px Georgia, 'Times New Roman', serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(words[i % words.length], w / 2, h / 2); }
+      out.push({ id: "sample-" + i, src: c.toDataURL("image/jpeg", 0.84), w, h, color: bg });
+    }
+    return out;
+  }
+  function shade(hex, amt) {
+    const n = parseInt(hex.slice(1), 16);
+    const f = (v) => Math.max(0, Math.min(255, v + amt));
+    return "#" + [f(n >> 16), f((n >> 8) & 255), f(n & 255)].map((v) => v.toString(16).padStart(2, "0")).join("");
+  }
+
+  // ---- The wall ----------------------------------------------------------
+  const wall = document.getElementById("wall");
+  let cols = [], queue = [], qi = 0, running = true, last = 0, bad = new Set();
+
+  function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+  function setPins(pins) {
+    const prevLast = queue[qi - 1];
+    queue = shuffle(pins.slice()); qi = 0;
+    if (prevLast && queue.length > 1 && queue[0].id === prevLast.id) queue.push(queue.shift());
+  }
+  function nextPin() {
+    for (let tries = 0; tries <= queue.length; tries++) {
+      if (qi >= queue.length) {
+        const lastId = queue.length ? queue[queue.length - 1].id : null;
+        shuffle(queue); qi = 0;
+        if (queue.length > 1 && queue[0].id === lastId) queue.push(queue.shift());
+      }
+      const p = queue[qi++];
+      if (p && !bad.has(p.id)) return p;
+    }
+    return null;
+  }
+  function addTile(col) {
+    const p = nextPin(); if (!p) return false;
+    const h = Math.round(col.width * (p.h / p.w));
+    const t = document.createElement("div");
+    t.className = "tile"; t.style.height = h + "px"; if (p.color) t.style.background = p.color;
+    const img = new Image();
+    img.alt = ""; img.decoding = "async";
+    img.onload = () => t.classList.add("in");
+    img.onerror = () => { bad.add(p.id); };
+    img.src = p.src;
+    t.appendChild(img); t._h = h;
+    col.track.appendChild(t);
+    col.height += h + GAP;
+    return true;
+  }
+  function build() {
+    wall.textContent = "";
+    const W = window.innerWidth;
+    const n = Math.max(2, Math.min(8, Math.round(W / (W >= 900 ? 250 : 190))));
+    const base = SPEEDS[settings.speed] * (reduceMotion ? 0.3 : 1);
+    cols = [];
+    for (let i = 0; i < n; i++) {
+      const el = document.createElement("div"); el.className = "col";
+      const track = document.createElement("div"); track.className = "track";
+      el.appendChild(track); wall.appendChild(el);
+      cols.push({ el, track, width: 0, height: 0, offset: Math.random() * 220, speed: base * (0.8 + Math.random() * 0.45) });
+    }
+    cols.forEach((c) => { c.width = c.el.clientWidth || 200; });
+    const need = window.innerHeight + 500;
+    cols.forEach((c) => { let guard = 0; while (c.height - c.offset < need && guard++ < 60) { if (!addTile(c)) break; } });
+  }
+  function tick(t) {
+    const dt = Math.min(0.1, last ? (t - last) / 1000 : 0); last = t;
+    if (running) {
+      const need = window.innerHeight + 500;
+      for (const c of cols) {
+        c.offset += c.speed * dt;
+        let first = c.track.firstElementChild;
+        while (first && first._h + GAP <= c.offset) {
+          c.offset -= first._h + GAP; c.height -= first._h + GAP; first.remove(); first = c.track.firstElementChild;
+        }
+        if (c.height - c.offset < need) addTile(c);
+        c.track.style.transform = "translate3d(0," + (-c.offset).toFixed(2) + "px,0)";
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  // ---- Status bar and Boards screen --------------------------------------
+  const hud = document.getElementById("hud"), statusEl = document.getElementById("status");
+  const pauseBtn = document.getElementById("pause-btn"), boardsBtn = document.getElementById("boards-btn");
+  const settingsEl = document.getElementById("settings"), form = document.getElementById("settings-form");
+  const boardsInput = document.getElementById("boards-input"), speedInput = document.getElementById("speed-input");
+  const errorsEl = document.getElementById("board-errors");
+  let hudTimer = 0;
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  function setStatus(res) {
+    const n = res.pins.length;
+    let html;
+    if (res.source === "live") html = "<b>" + n + "</b> pins from <b>" + res.ok + "</b> board" + (res.ok === 1 ? "" : "s");
+    else if (res.source === "file") html = "<b>" + n + "</b> pins from the saved pin list";
+    else if (res.source === "cached") html = "Showing <b>" + n + "</b> saved pins. Pinterest didn't answer just now.";
+    else html = "Sample images. <span class=\"warn\">Your boards couldn't be read here.</span>";
+    if (res.failed && res.failed.length && res.source !== "sample") html += " · <span class=\"warn\">Couldn't read " + res.failed.map(esc).join(", ") + "</span>";
+    statusEl.innerHTML = html;
+  }
+  function showHud(ms) { hud.classList.add("show"); clearTimeout(hudTimer); hudTimer = setTimeout(() => hud.classList.remove("show"), ms || 5000); }
+  wall.parentElement.addEventListener("click", (e) => {
+    if (!settingsEl.hidden || hud.contains(e.target)) return;
+    if (hud.classList.contains("show")) { hud.classList.remove("show"); clearTimeout(hudTimer); } else showHud();
+  });
+  pauseBtn.addEventListener("click", () => { running = !running; pauseBtn.textContent = running ? "Pause" : "Resume"; showHud(); });
+  boardsBtn.addEventListener("click", openSettings);
+
+  function openSettings() {
+    clearTimeout(hudTimer); hud.classList.remove("show");
+    boardsInput.value = settings.boards.join("\n");
+    speedInput.value = settings.speed;
+    errorsEl.hidden = true; errorsEl.textContent = "";
+    settingsEl.hidden = false;
+    setTimeout(() => boardsInput.focus(), 50);
+  }
+  document.getElementById("cancel-btn").addEventListener("click", () => { settingsEl.hidden = true; });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const lines = boardsInput.value.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+    const problems = [];
+    lines.forEach((l) => { const b = parseBoard(l); if (b && b.error) problems.push(l + ": " + b.error); });
+    if (!lines.length) problems.push("Add at least one board link.");
+    if (problems.length) { errorsEl.textContent = problems.join(" "); errorsEl.hidden = false; return; }
+    settings = { boards: lines, speed: speedInput.value };
+    writeStore(STORE_KEY, settings);
+    settingsEl.hidden = true;
+    statusEl.textContent = "Loading pins…"; showHud(60000);
+    await refresh(true);
+  });
+
+  async function refresh(rebuild) {
+    const res = await loadPins();
+    bad = new Set();
+    setPins(res.pins);
+    if (rebuild) build();
+    setStatus(res);
+    if (res.source !== "live" || (res.failed && res.failed.length)) showHud(9000); else if (rebuild) showHud(4000);
+  }
+
+  // ---- Keep the screen on where the browser allows it --------------------
+  let lock = null;
+  async function keepAwake() { try { if (navigator.wakeLock && document.visibilityState === "visible") lock = await navigator.wakeLock.request("screen"); } catch (e) {} }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { keepAwake(); last = 0; } });
+
+  let resizeTimer = 0;
+  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(build, 300); });
+
+  refresh(true).then(() => { requestAnimationFrame(tick); keepAwake(); });
+  setInterval(() => refresh(false), REFRESH_MS);
+})();
+</script>
+</body>
+</html>
