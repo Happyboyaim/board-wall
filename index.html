@@ -12,17 +12,17 @@
 <link rel="manifest" href="manifest.webmanifest">
 <title>Board Wall</title>
 <style>
-/* Layout: full-bleed columns of pins drifting slowly upward; no chrome until you tap. One deliberate dark look. */
+/* Layout: full-bleed columns of pins drifting slowly upward; nothing on screen until you tap. One deliberate dark look. */
 :root {
   --ground: #0e0d0c;
   --tile: #1c1a18;
   --ink: #ece6de;
   --ink-soft: #a39b91;
-  --glass: rgba(24, 22, 20, 0.82);
+  --glass: rgba(24, 22, 20, 0.86);
   --line: rgba(236, 230, 222, 0.14);
   --accent: #e6c79c;
   --warn: #f0a08a;
-  --gap: 12px;
+  --gap: 10px;
   --radius: 16px;
   --font-ui: -apple-system, "SF Pro Text", system-ui, "Segoe UI", Roboto, sans-serif;
   color-scheme: dark;
@@ -34,8 +34,7 @@ body { font-family: var(--font-ui); -webkit-user-select: none; user-select: none
 #wall {
   position: fixed; inset: 0;
   display: flex; gap: var(--gap);
-  padding-left: max(var(--gap), env(safe-area-inset-left, 0px));
-  padding-right: max(var(--gap), env(safe-area-inset-right, 0px));
+  padding-left: var(--gap); padding-right: var(--gap);
 }
 .col { flex: 1 1 0; min-width: 0; position: relative; }
 .track { position: absolute; left: 0; right: 0; top: 0; display: flex; flex-direction: column; gap: var(--gap); will-change: transform; }
@@ -43,12 +42,7 @@ body { font-family: var(--font-ui); -webkit-user-select: none; user-select: none
 .tile img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 1.4s ease; }
 .tile.in img { opacity: 1; }
 
-/* Soft fade at top and bottom edges so pins don't hard-clip */
-#wall::before, #wall::after { content: ""; position: absolute; left: 0; right: 0; height: 64px; z-index: 2; pointer-events: none; }
-#wall::before { top: 0; background: linear-gradient(var(--ground), transparent); }
-#wall::after { bottom: 0; background: linear-gradient(transparent, var(--ground)); }
-
-/* Status bar that appears on tap */
+/* Status bar that appears only when you tap */
 #hud {
   position: fixed; z-index: 5; left: 50%; transform: translate(-50%, 12px);
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
@@ -69,29 +63,41 @@ button {
   border: 1px solid var(--line); border-radius: 999px; padding: 10px 16px; cursor: pointer;
 }
 button.primary { background: var(--accent); color: #1d1710; border-color: transparent; }
-button:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.quiet { background: transparent; color: var(--ink-soft); padding: 8px 10px; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Boards screen */
 #settings {
   position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
-  background: rgba(8, 7, 6, 0.6);
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  background: rgba(8, 7, 6, 0.6); overflow-y: auto;
 }
 .sheet {
-  width: min(560px, 100%); box-sizing: border-box; padding: 24px; border-radius: 22px;
+  width: min(600px, 100%); box-sizing: border-box; padding: 24px; border-radius: 22px;
   background: var(--glass); border: 1px solid var(--line);
   -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
-  display: grid; gap: 16px; -webkit-user-select: text; user-select: text;
+  display: grid; gap: 18px; -webkit-user-select: text; user-select: text;
 }
 .sheet h2 { margin: 0; font-size: 22px; letter-spacing: -0.01em; text-wrap: balance; }
 .sheet p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ink-soft); }
-.sheet label { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
+.label { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); }
 .field { display: grid; gap: 8px; }
-textarea, select {
-  font: 15px/1.5 var(--font-ui); color: var(--ink); background: rgba(0,0,0,0.35);
-  border: 1px solid var(--line); border-radius: 12px; padding: 12px; box-sizing: border-box; width: 100%;
+input[type="text"], input[type="url"], select {
+  font: 15px/1.4 var(--font-ui); color: var(--ink); background: rgba(0,0,0,0.35);
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px; box-sizing: border-box; width: 100%; min-width: 0;
 }
-textarea { min-height: 132px; resize: vertical; }
+.add-row { display: grid; grid-template-columns: 2fr 1fr auto; gap: 8px; }
+@media (max-width: 560px) { .add-row { grid-template-columns: 1fr; } }
+
+#saved-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 42vh; overflow-y: auto; }
+.saved { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; border-radius: 14px; background: rgba(0,0,0,0.28); border: 1px solid var(--line); }
+.saved.on { border-color: rgba(230,199,156,0.55); }
+.saved input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent); flex: none; margin: 0; }
+.saved .who { flex: 1; min-width: 0; display: grid; gap: 2px; cursor: pointer; }
+.saved .name { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved .link { font-size: 12px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved .acts { display: flex; gap: 4px; flex: none; }
+.empty { font-size: 14px; color: var(--ink-soft); padding: 8px 0; }
 #board-errors { color: var(--warn); font-size: 14px; line-height: 1.5; margin: 0; }
 .row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
 
@@ -103,30 +109,41 @@ textarea { min-height: 132px; resize: vertical; }
 
 <div id="hud" role="status">
   <span id="status">Loading pins…</span>
+  <button id="fs-btn" type="button" hidden>Full screen</button>
   <button id="pause-btn" type="button">Pause</button>
   <button id="boards-btn" type="button" class="primary">Boards</button>
 </div>
 
 <div id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
-  <form class="sheet" id="settings-form">
-    <h2 id="settings-title">Boards on the wall</h2>
-    <p>Paste one Pinterest board link per line, like pinterest.com/dankong2004/2027. A profile link shows that profile's newest pins. Boards must be public.</p>
+  <form class="sheet" id="settings-form" novalidate>
+    <h2 id="settings-title">Saved boards</h2>
+    <p>Tick the boards you want on the wall, or tap Show to switch to just that board. Boards must be public.</p>
+
+    <ul id="saved-list"></ul>
+
     <div class="field">
-      <label for="boards-input">Board links</label>
-      <textarea id="boards-input" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+      <span class="label">Save a new board</span>
+      <div class="add-row">
+        <input type="url" id="add-link" placeholder="pinterest.com/you/board" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Board link">
+        <input type="text" id="add-name" placeholder="Name (optional)" aria-label="Board name">
+        <button type="button" id="add-btn">Save board</button>
+      </div>
     </div>
+
     <p id="board-errors" hidden></p>
+
     <div class="field">
-      <label for="speed-input">Drift speed</label>
+      <label class="label" for="speed-input">Drift speed</label>
       <select id="speed-input">
         <option value="slow">Slow</option>
         <option value="medium">Medium</option>
         <option value="fast">Fast</option>
       </select>
     </div>
+
     <div class="row">
       <button type="button" id="cancel-btn">Cancel</button>
-      <button type="submit" class="primary" id="save-btn">Save and reload</button>
+      <button type="submit" class="primary" id="save-btn">Show ticked boards</button>
     </div>
   </form>
 </div>
@@ -141,23 +158,11 @@ textarea { min-height: 132px; resize: vertical; }
   const CACHE_KEY = "boardwall.pins.v1";
   const SPEEDS = { slow: 7, medium: 13, fast: 22 };      // pixels per second
   const REFRESH_MS = 6 * 60 * 60 * 1000;                 // re-read boards every 6 hours
-  const GAP = 12;
+  const GAP = 10;
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function readStore(key) { try { return JSON.parse(localStorage.getItem(key) || "null"); } catch (e) { return null; } }
   function writeStore(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
-
-  function loadSettings() {
-    const s = readStore(STORE_KEY) || {};
-    let q; try { q = new URLSearchParams(location.search); } catch (e) { q = new URLSearchParams(); }
-    if (q.get("boards")) s.boards = q.get("boards").split(",");
-    if (q.get("speed")) s.speed = q.get("speed");
-    return {
-      boards: Array.isArray(s.boards) && s.boards.length ? s.boards : DEFAULT_BOARDS.slice(),
-      speed: SPEEDS[s.speed] ? s.speed : "medium"
-    };
-  }
-  let settings = loadSettings();
 
   // Accepts "https://www.pinterest.com/user/board/", "pinterest.com/user/board", "user/board" or a profile link.
   const RESERVED = new Set(["pin", "search", "ideas", "today", "settings", "business", "_", "explore"]);
@@ -168,11 +173,44 @@ textarea { min-height: 132px; resize: vertical; }
     s = s.replace(/[?#].*$/, "").replace(/^https?:\/\//i, "").replace(/^([a-z]{2,3}\.)?(www\.)?pinterest\.[a-z.]+\//i, "");
     const parts = s.split("/").filter(Boolean);
     if (!parts.length || RESERVED.has(parts[0].toLowerCase())) return { error: "That doesn't look like a board link." };
-    const user = decodeURIComponent(parts[0]);
-    const board = parts[1] ? decodeURIComponent(parts[1]) : null;
     if (parts[2]) return { error: "Board sections aren't supported. Use the board link itself." };
+    let user, board;
+    try { user = decodeURIComponent(parts[0]); board = parts[1] ? decodeURIComponent(parts[1]) : null; }
+    catch (e) { return { error: "That link has characters it can't read." }; }
     return { user, board, label: board ? user + "/" + board : user };
   }
+  function keyOf(link) { const b = parseBoard(link); return b && !b.error ? b.label.toLowerCase() : String(link).trim().toLowerCase(); }
+  function canonical(link) { const b = parseBoard(link); return b && !b.error ? "https://www.pinterest.com/" + b.label + "/" : String(link).trim(); }
+  function prettify(slug) { return slug.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()); }
+  function displayName(entry) {
+    if (entry.name) return entry.name;
+    const b = parseBoard(entry.link);
+    return b && !b.error ? prettify(b.board || b.user) : entry.link;
+  }
+
+  // Saved settings: library = every saved board; active = the ones on the wall now.
+  function loadSettings() {
+    const s = readStore(STORE_KEY) || {};
+    let library = Array.isArray(s.library) ? s.library.filter((e) => e && e.link) : null;
+    let active = Array.isArray(s.active) ? s.active : null;
+    if (!library) {                                         // first run, or the older one-list format
+      const old = Array.isArray(s.boards) && s.boards.length ? s.boards : DEFAULT_BOARDS;
+      library = old.map((l) => ({ link: canonical(l), name: "" }));
+      active = library.map((e) => e.link);
+    }
+    let q; try { q = new URLSearchParams(location.search); } catch (e) { q = new URLSearchParams(); }
+    if (q.get("boards")) {                                  // a bookmark like ?boards=user/board,user/other
+      active = q.get("boards").split(",").map(canonical);
+      active.forEach((l) => { if (!library.some((e) => keyOf(e.link) === keyOf(l))) library.push({ link: l, name: "" }); });
+    }
+    const keys = new Set(library.map((e) => keyOf(e.link)));
+    active = (active || []).filter((l) => keys.has(keyOf(l)));
+    if (!active.length && library.length) active = [library[0].link];
+    const speed = SPEEDS[q.get("speed")] ? q.get("speed") : (SPEEDS[s.speed] ? s.speed : "medium");
+    return { library, active, speed };
+  }
+  let settings = loadSettings();
+  function persist() { writeStore(STORE_KEY, settings); }
 
   // ---- Reading pins from Pinterest's public board widget feed ------------
   function feedUrl(b) {
@@ -196,31 +234,37 @@ textarea { min-height: 132px; resize: vertical; }
   }
   function normalize(data) {
     const pins = (data && data.data && Array.isArray(data.data.pins)) ? data.data.pins : [];
-    return pins.map((p) => {
+    const list = pins.map((p) => {
       const im = p.images || {};
       const best = im["564x"] || im["474x"] || im["237x"] || im["236x"] || Object.values(im)[0];
       if (!best || !best.url) return null;
       return { id: String(p.id), src: best.url, w: best.width || 236, h: best.height || 314, color: p.dominant_color || null };
     }).filter(Boolean);
+    const boardName = data && data.data && data.data.board && data.data.board.name ? String(data.data.board.name) : "";
+    return { pins: list, name: boardName };
   }
   async function boardPins(b) {
-    try { const d = await jsonp(feedUrl(b), 12000); const n = normalize(d); if (n.length) return n; } catch (e) {}
+    try { const n = normalize(await jsonp(feedUrl(b), 12000)); if (n.pins.length) return n; } catch (e) {}
     const r = await fetch(feedUrl(b), { credentials: "omit" });   // second try, in case the feed allows direct reads
     return normalize(await r.json());
   }
 
   async function loadPins() {
-    const boards = settings.boards.map(parseBoard).filter((b) => b && !b.error);
+    const boards = settings.active.map(parseBoard).filter((b) => b && !b.error);
     const results = await Promise.allSettled(boards.map(boardPins));
-    const seen = new Set(); const pins = []; const failed = []; let ok = 0;
+    const seen = new Set(); const pins = []; const failed = []; let ok = 0, named = false;
     results.forEach((r, i) => {
-      if (r.status === "fulfilled" && r.value.length) {
+      if (r.status === "fulfilled" && r.value.pins.length) {
         ok++;
-        r.value.forEach((p) => { if (!seen.has(p.id)) { seen.add(p.id); pins.push(p); } });
+        r.value.pins.forEach((p) => { if (!seen.has(p.id)) { seen.add(p.id); pins.push(p); } });
+        const entry = settings.library.find((e) => keyOf(e.link) === boards[i].label.toLowerCase());
+        if (entry && !entry.name && r.value.name) { entry.name = r.value.name; named = true; }
       } else failed.push(boards[i].label);
     });
+    if (named) persist();
+    const cacheKey = settings.active.map(keyOf).sort().join("|");
     if (pins.length) {
-      writeStore(CACHE_KEY, { at: Date.now(), boards: settings.boards, pins });
+      writeStore(CACHE_KEY, { at: Date.now(), key: cacheKey, pins });
       return { pins, source: "live", ok, failed };
     }
     try {
@@ -228,7 +272,7 @@ textarea { min-height: 132px; resize: vertical; }
       if (r.ok) { const j = await r.json(); if (Array.isArray(j.pins) && j.pins.length) return { pins: j.pins, source: "file", ok: 0, failed }; }
     } catch (e) {}
     const cached = readStore(CACHE_KEY);
-    if (cached && Array.isArray(cached.pins) && cached.pins.length && String(cached.boards) === String(settings.boards)) {
+    if (cached && Array.isArray(cached.pins) && cached.pins.length && cached.key === cacheKey) {
       return { pins: cached.pins, source: "cached", at: cached.at, ok: 0, failed };
     }
     return { pins: samplePins(), source: "sample", ok: 0, failed };
@@ -338,19 +382,19 @@ textarea { min-height: 132px; resize: vertical; }
     requestAnimationFrame(tick);
   }
 
-  // ---- Status bar and Boards screen --------------------------------------
+  // ---- Status bar --------------------------------------------------------
   const hud = document.getElementById("hud"), statusEl = document.getElementById("status");
   const pauseBtn = document.getElementById("pause-btn"), boardsBtn = document.getElementById("boards-btn");
-  const settingsEl = document.getElementById("settings"), form = document.getElementById("settings-form");
-  const boardsInput = document.getElementById("boards-input"), speedInput = document.getElementById("speed-input");
-  const errorsEl = document.getElementById("board-errors");
+  const fsBtn = document.getElementById("fs-btn");
   let hudTimer = 0;
 
   function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  function activeNames() { return settings.active.map((l) => { const e = settings.library.find((x) => keyOf(x.link) === keyOf(l)); return e ? displayName(e) : l; }); }
   function setStatus(res) {
     const n = res.pins.length;
+    const names = activeNames();
     let html;
-    if (res.source === "live") html = "<b>" + n + "</b> pins from <b>" + res.ok + "</b> board" + (res.ok === 1 ? "" : "s");
+    if (res.source === "live") html = "<b>" + n + "</b> pins · " + (names.length <= 2 ? names.map((x) => "<b>" + esc(x) + "</b>").join(" + ") : "<b>" + res.ok + "</b> boards");
     else if (res.source === "file") html = "<b>" + n + "</b> pins from the saved pin list";
     else if (res.source === "cached") html = "Showing <b>" + n + "</b> saved pins. Pinterest didn't answer just now.";
     else html = "Sample images. <span class=\"warn\">Your boards couldn't be read here.</span>";
@@ -358,55 +402,123 @@ textarea { min-height: 132px; resize: vertical; }
     statusEl.innerHTML = html;
   }
   function showHud(ms) { hud.classList.add("show"); clearTimeout(hudTimer); hudTimer = setTimeout(() => hud.classList.remove("show"), ms || 5000); }
-  wall.parentElement.addEventListener("click", (e) => {
+  function hideHud() { hud.classList.remove("show"); clearTimeout(hudTimer); }
+  document.body.addEventListener("click", (e) => {
     if (!settingsEl.hidden || hud.contains(e.target)) return;
-    if (hud.classList.contains("show")) { hud.classList.remove("show"); clearTimeout(hudTimer); } else showHud();
+    if (hud.classList.contains("show")) hideHud(); else showHud();
   });
   pauseBtn.addEventListener("click", () => { running = !running; pauseBtn.textContent = running ? "Pause" : "Resume"; showHud(); });
-  boardsBtn.addEventListener("click", openSettings);
 
-  function openSettings() {
-    clearTimeout(hudTimer); hud.classList.remove("show");
-    boardsInput.value = settings.boards.join("\n");
-    speedInput.value = settings.speed;
-    errorsEl.hidden = true; errorsEl.textContent = "";
-    settingsEl.hidden = false;
-    setTimeout(() => boardsInput.focus(), 50);
+  // Full screen button: only in a Safari tab that supports it (a Home Screen app is already full screen)
+  const standalone = window.navigator.standalone === true || matchMedia("(display-mode: standalone), (display-mode: fullscreen)").matches;
+  const root = document.documentElement;
+  const canFs = !!(root.requestFullscreen || root.webkitRequestFullscreen);
+  function inFs() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  fsBtn.hidden = standalone || !canFs;
+  fsBtn.addEventListener("click", () => {
+    try {
+      if (inFs()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); }
+      else { const p = (root.requestFullscreen || root.webkitRequestFullscreen).call(root); if (p && p.catch) p.catch(() => {}); }
+    } catch (e) {}
+    hideHud();
+  });
+  ["fullscreenchange", "webkitfullscreenchange"].forEach((ev) => document.addEventListener(ev, () => { fsBtn.textContent = inFs() ? "Exit full screen" : "Full screen"; }));
+
+  // ---- Saved boards screen -----------------------------------------------
+  const settingsEl = document.getElementById("settings"), form = document.getElementById("settings-form");
+  const listEl = document.getElementById("saved-list"), speedInput = document.getElementById("speed-input");
+  const addLink = document.getElementById("add-link"), addName = document.getElementById("add-name");
+  const errorsEl = document.getElementById("board-errors");
+  let draft = null;
+
+  function showError(msg) { errorsEl.textContent = msg; errorsEl.hidden = !msg; }
+  function renderList() {
+    listEl.textContent = "";
+    if (!draft.library.length) {
+      const li = document.createElement("li"); li.className = "empty";
+      li.textContent = "No saved boards yet. Paste a board link below.";
+      listEl.appendChild(li); return;
+    }
+    draft.library.forEach((entry, i) => {
+      const key = keyOf(entry.link), on = draft.on.has(key);
+      const li = document.createElement("li"); li.className = "saved" + (on ? " on" : "");
+      const cb = document.createElement("input"); cb.type = "checkbox"; cb.id = "show-" + i; cb.checked = on;
+      cb.setAttribute("aria-label", "Put " + displayName(entry) + " on the wall");
+      cb.addEventListener("change", () => { if (cb.checked) draft.on.add(key); else draft.on.delete(key); li.classList.toggle("on", cb.checked); showError(""); });
+      const who = document.createElement("label"); who.className = "who"; who.htmlFor = cb.id;
+      const nm = document.createElement("span"); nm.className = "name"; nm.textContent = displayName(entry);
+      const lk = document.createElement("span"); lk.className = "link"; const pb = parseBoard(entry.link); lk.textContent = pb && !pb.error ? pb.label : entry.link;
+      who.append(nm, lk);
+      const acts = document.createElement("div"); acts.className = "acts";
+      const showBtn = document.createElement("button"); showBtn.type = "button"; showBtn.textContent = "Show";
+      showBtn.setAttribute("aria-label", "Show only " + displayName(entry));
+      showBtn.addEventListener("click", () => { draft.on = new Set([key]); apply(); });
+      const rm = document.createElement("button"); rm.type = "button"; rm.className = "quiet"; rm.textContent = "Remove";
+      rm.setAttribute("aria-label", "Remove " + displayName(entry));
+      rm.addEventListener("click", () => { draft.library.splice(i, 1); draft.on.delete(key); renderList(); });
+      acts.append(showBtn, rm);
+      li.append(cb, who, acts);
+      listEl.appendChild(li);
+    });
   }
+  function openSettings() {
+    hideHud();
+    draft = { library: settings.library.map((e) => ({ link: e.link, name: e.name || "" })), on: new Set(settings.active.map(keyOf)) };
+    speedInput.value = settings.speed;
+    addLink.value = ""; addName.value = ""; showError("");
+    renderList();
+    settingsEl.hidden = false;
+  }
+  boardsBtn.addEventListener("click", openSettings);
   document.getElementById("cancel-btn").addEventListener("click", () => { settingsEl.hidden = true; });
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const lines = boardsInput.value.split(/\n+/).map((s) => s.trim()).filter(Boolean);
-    const problems = [];
-    lines.forEach((l) => { const b = parseBoard(l); if (b && b.error) problems.push(l + ": " + b.error); });
-    if (!lines.length) problems.push("Add at least one board link.");
-    if (problems.length) { errorsEl.textContent = problems.join(" "); errorsEl.hidden = false; return; }
-    settings = { boards: lines, speed: speedInput.value };
-    writeStore(STORE_KEY, settings);
+
+  function addBoard() {
+    const raw = addLink.value.trim();
+    if (!raw) { showError("Paste a board link first."); return; }
+    const b = parseBoard(raw);
+    if (!b || b.error) { showError((b && b.error) || "That doesn't look like a board link."); return; }
+    const link = canonical(raw), key = keyOf(link);
+    if (draft.library.some((e) => keyOf(e.link) === key)) { showError("That board is already saved."); draft.on.add(key); renderList(); return; }
+    draft.library.push({ link, name: addName.value.trim() });
+    draft.on.add(key);
+    addLink.value = ""; addName.value = ""; showError("");
+    renderList();
+  }
+  document.getElementById("add-btn").addEventListener("click", addBoard);
+  [addLink, addName].forEach((el) => el.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addBoard(); } }));
+
+  async function apply() {
+    if (addLink.value.trim()) { addBoard(); if (!errorsEl.hidden) return; }
+    const active = draft.library.filter((e) => draft.on.has(keyOf(e.link))).map((e) => e.link);
+    if (!active.length) { showError(draft.library.length ? "Tick at least one board to show." : "Save a board first."); return; }
+    settings = { library: draft.library, active, speed: speedInput.value in SPEEDS ? speedInput.value : "medium" };
+    persist();
     settingsEl.hidden = true;
     statusEl.textContent = "Loading pins…"; showHud(60000);
-    await refresh(true);
-  });
+    await refresh(true, true);
+  }
+  form.addEventListener("submit", (e) => { e.preventDefault(); apply(); });
 
-  async function refresh(rebuild) {
+  async function refresh(rebuild, confirm) {
     const res = await loadPins();
     bad = new Set();
     setPins(res.pins);
     if (rebuild) build();
     setStatus(res);
-    if (res.source !== "live" || (res.failed && res.failed.length)) showHud(9000); else if (rebuild) showHud(4000);
+    if (res.source !== "live" || (res.failed && res.failed.length)) showHud(9000);   // only speak up when something's wrong
+    else if (confirm) showHud(3000);
+    else hideHud();
   }
 
   // ---- Keep the screen on where the browser allows it --------------------
-  let lock = null;
-  async function keepAwake() { try { if (navigator.wakeLock && document.visibilityState === "visible") lock = await navigator.wakeLock.request("screen"); } catch (e) {} }
+  async function keepAwake() { try { if (navigator.wakeLock && document.visibilityState === "visible") await navigator.wakeLock.request("screen"); } catch (e) {} }
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { keepAwake(); last = 0; } });
 
   let resizeTimer = 0;
   window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(build, 300); });
 
-  refresh(true).then(() => { requestAnimationFrame(tick); keepAwake(); });
-  setInterval(() => refresh(false), REFRESH_MS);
+  refresh(true, false).then(() => { requestAnimationFrame(tick); keepAwake(); });
+  setInterval(() => refresh(false, false), REFRESH_MS);
 })();
 </script>
 </body>

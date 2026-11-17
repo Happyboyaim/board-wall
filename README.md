@@ -22,12 +22,18 @@ The iPad reads each board from Pinterest's public board widget feed (the same fe
 
 1. Open that address in Safari.
 2. Tap Share > Add to Home Screen. Keep "Open as Web App" on, then tap Add.
-3. Open Board Wall from the Home Screen. Tap anywhere, then Boards, to paste board links (one per line) and pick a drift speed. The Home Screen app keeps its own board list, separate from Safari.
+3. Open Board Wall from the Home Screen. Tap anywhere, then Boards, to save boards and pick which ones show. The Home Screen app keeps its own saved boards, separate from Safari.
 4. Keep the screen on: Settings > Display & Brightness > Auto-Lock > Never. Leave the iPad plugged in.
 5. Optional, to stop the app being swiped away: Settings > Accessibility > Guided Access > on, set a passcode, and set Display Auto-Lock to Never. Open Board Wall, triple-click the top button, tap Start. Triple-click again and enter the passcode to end.
 
-## Changing boards
+## Saved boards
 
-Tap the wall > Boards > paste or delete links > Save and reload. You can also open the address with `?boards=` and comma-separated links, for example `?boards=pinterest.com/dankong2004/2027,pinterest.com/dankong2004/another-board`.
+Tap the wall > Boards. Every board you save stays in the list.
+- **Save a board:** paste its link (and an optional name), tap Save board.
+- **Switch to one board:** tap Show next to it.
+- **Mix boards:** tick several, then tap Show ticked boards.
+- **Remove:** tap Remove, then Show ticked boards to keep the change.
 
-Boards are re-read every 6 hours while the app is open.
+You can also open the address with `?boards=` and comma-separated links, for example `?boards=pinterest.com/dankong2004/2027,pinterest.com/dankong2004/another-board`.
+
+Boards are re-read every 6 hours while the app is open. Nothing appears on screen unless you tap, or a board can't be read.
